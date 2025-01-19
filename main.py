@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 import os
-
 import pandas as pd
 
 from src.views import main as main_view
@@ -8,10 +7,11 @@ from src.services import search_transactions
 from src.reports import spending_by_category
 
 if __name__ == "__main__":
+    # Загружаем переменные окружения
     load_dotenv()
     api_key = os.getenv("API_KEY")
 
-    # 1) Запускаем "Главную страницу"
+    # Выполнение сценария главной страницы
     date_str = "2021-12-31 12:00:00"
     result_main = main_view(
         date_str=date_str,
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     )
     print("Результат главной страницы:\n", result_main)
 
-    # 2) Запускаем "Простой поиск"
+    # Выполнение поиска транзакций по запросу
     query_str = "Колхоз"
     result_search = search_transactions(
         query=query_str,
@@ -29,10 +29,12 @@ if __name__ == "__main__":
     )
     print(f"\nРезультат поиска по '{query_str}':\n", result_search)
 
-    # 3) Читаем Excel как DataFrame и вызываем spending_by_category
+    # Генерация отчета "Траты по категории"
     df = pd.read_excel("data/operations.xlsx")
-    # Например, берем категорию "Супермаркеты", и дату "2021-12-31"
-    # Декоратор автоматом сохранит результат в report_*.json
-    filtered_df = spending_by_category(df, "Супермаркеты", "2021-12-31")
+    filtered_df = spending_by_category(
+        transactions=df,
+        category="Супермаркеты",
+        date="2021-12-31"
+    )
     print("\nРезультат отчета 'Траты по категории':")
     print(filtered_df.head())
