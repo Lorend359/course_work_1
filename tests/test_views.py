@@ -1,172 +1,94 @@
+import json
+from datetime import datetime
+
+import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
-from src.views import (
-    load_user_settings,
-    fetch_stock_data,
-    fetch_market_data,
-    get_data_for_date,
-    fetch_currency_data
-)
 
-# Тест для загрузки пользовательских настроек
-@patch("builtins.open", new_callable=MagicMock)
-def test_load_user_settings(mock_open):
-    mock_file = MagicMock()
-    mock_file.read.return_value = '{"user_stocks": ["AAPL", "GOOGL"], "user_currencies": ["USD", "EUR"]}'
-    mock_open.return_value.__enter__.return_value = mock_file
+from src.views import get_card_statistics, get_greeting, get_top_transactions, main
 
-    settings = load_user_settings('user_settings.json')
-    assert settings == {"user_stocks": ["AAPL", "GOOGL"], "user_currencies": ["USD", "EUR"]}
 
-# Тест для успешного получения данных об акциях
-@patch("requests.get")
-def test_fetch_stock_data_success(mock_get):
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"historicalStockList": []}
-    mock_get.return_value = mock_response
+@pytest.fixture
+def sample_transactions():
+    """
+    Пример данных о транзакциях.
+    """
+    data = pd.DataFrame(
+        {
+            "Дата операции": ["01.12.2021 12:00:00", "15.12.2021 11:59:59", "31.12.2021 12:00:00"],
+            "Сумма операции": [1000, 500, -200],
+            "Кэшбэк": [10, 5, 0],
+            "Номер карты": ["*1234", "*5678", "*9012"],
+            "Категория": ["Пополнение", "Оплата", "Снятие"],
+            "Описание": ["Описание1", "Описание2", "Описание3"],
+        }
+    )
+    return data
 
-    result = fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
-    assert result == {"historicalStockList": []}
-    mock_get.assert_called_once()
 
-# Тест для обработки статуса 401 в fetch_stock_data
-@patch("requests.get")
-def test_fetch_stock_data_unauthorized(mock_get):
-    mock_response = MagicMock()
-    mock_response.status_code = 401
-    mock_get.return_value = mock_response
+def test_get_greeting():
+    """
+    Тестирует функцию генерации приветствия.
+    """
+    assert get_greeting(datetime(2021, 12, 31, 9, 0)) == "Доброе утро"
+    assert get_greeting(datetime(2021, 12, 31, 15, 0)) == "Добрый день"
+    assert get_greeting(datetime(2021, 12, 31, 20, 0)) == "Добрый вечер"
+    assert get_greeting(datetime(2021, 12, 31, 2, 0)) == "Доброй ночи"
 
-    with pytest.raises(Exception) as excinfo:
-        fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
 
-    assert str(excinfo.value) == "Unauthorized access. Check your API key."
+def test_get_card_statistics(sample_transactions):
+    """
+    Тестирует подсчет статистики по картам.
+    """
+    stats = get_card_statistics(sample_transactions)
+    assert len(stats) == 3
+    assert stats[0]["total_spent"] == 1000
+    assert stats[0]["cashback"] == 10
+    assert stats[1]["total_spent"] == 500
+    assert stats[1]["cashback"] == 5
 
-# Тест для обработки других ошибок в fetch_stock_data
-@patch("requests.get")
-def test_fetch_stock_data_other_error(mock_get):
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_get.return_value = mock_response
 
-    with pytest.raises(Exception) as excinfo:
-        fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
+def test_get_top_transactions(sample_transactions):
+    """
+    Тестирует выбор топ-N транзакций.
+    """
+    top_transactions = get_top_transactions(sample_transactions, top_n=2)
+    assert len(top_transactions) == 2
+    assert top_transactions[0]["Сумма операции"] == 1000
+    assert top_transactions[1]["Сумма операции"] == 500
 
-    assert str(excinfo.value) == "Error fetching data for AAPL: 500"
 
-# Тест для получения данных о валюте
-@patch("requests.get")
-def test_fetch_currency_data(mock_get):
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = [
-        {"symbol": "USD", "price": 1.0},
-        {"symbol": "EUR", "price": 0.85}
-    ]
-    mock_get.return_value = mock_response
+def test_main(monkeypatch, tmp_path, sample_transactions):
+    """
+    Тестирует функцию main.
+    """
 
-    result = fetch_currency_data(["USD", "EUR"])
-    assert result == [
-        {"symbol": "USD", "price": 1.0},
-        {"symbol": "EUR", "price": 0.85}
-    ]
-    mock_get.assert_called_once()
+    def mock_fetch_currency_data(api_key, currencies):
+        return {"USD": 1.00, "EUR": 0.85}
 
-# Тест для обработки статуса 401 в fetch_currency_data
-def test_fetch_currency_data_unauthorized():
-    with patch("requests.get") as mock_get:
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_get.return_value = mock_response
+    def mock_fetch_stock_data(api_key, stocks):
+        return [{"symbol": "AAPL", "price": 150.00}, {"symbol": "GOOGL", "price": 2800.00}]
 
-        with pytest.raises(Exception) as excinfo:
-            fetch_currency_data(["USD", "EUR"])
+    monkeypatch.setattr("src.views.fetch_currency_data", mock_fetch_currency_data)
+    monkeypatch.setattr("src.views.fetch_stock_data", mock_fetch_stock_data)
 
-        assert str(excinfo.value) == "Unauthorized access. Check your API key."
+    sample_user_settings = tmp_path / "user_settings.json"
+    sample_user_settings.write_text(
+        json.dumps({"user_currencies": ["USD", "EUR"], "user_stocks": ["AAPL", "GOOGL"]}), encoding="utf-8"
+    )
 
-# Тест для обработки других ошибок в fetch_currency_data
-def test_fetch_currency_data_other_error():
-    with patch("requests.get") as mock_get:
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_get.return_value = mock_response
+    excel_path = tmp_path / "operations.xlsx"
+    sample_transactions.to_excel(excel_path, index=False)
 
-        with pytest.raises(Exception) as excinfo:
-            fetch_currency_data(["USD", "EUR"])
+    result = main(
+        date_str="2021-12-31 12:00:00",
+        excel_path=str(excel_path),
+        user_settings_path=str(sample_user_settings),
+        api_key="fake_api_key",
+    )
+    result_json = json.loads(result)
 
-        assert str(excinfo.value) == "Error fetching currency data: 500"
-
-# Тест для получения данных о рынке
-@patch("src.views.fetch_stock_data")
-@patch("src.views.fetch_currency_data")
-@patch("src.views.load_user_settings")
-def test_fetch_market_data(mock_load_user_settings, mock_fetch_currency_data, mock_fetch_stock_data):
-    mock_load_user_settings.return_value = {"user_stocks": ["AAPL"], "user_currencies": ["USD"]}
-    mock_fetch_stock_data.return_value = {
-        "historicalStockList": [
-            {
-                "symbol": "AAPL",
-                "historical": [{"date": "2022-06-01", "price": 150}]
-            }
-        ]
-    }
-    mock_fetch_currency_data.return_value = [
-        {"symbol": "USD", "price": 1.0}
-    ]
-
-    result = fetch_market_data("22.06.2022")
-    expected = {
-        "AAPL": [{"date": "2022-06-01", "price": 150}],
-        "currency_rates": {"USD": 1.0}
-    }
-    assert result == expected
-
-# Тест для получения данных за определенную дату
-@patch("src.views.fetch_market_data")
-def test_get_data_for_date(mock_fetch_market_data):
-    mock_fetch_market_data.return_value = {
-        "AAPL": [{"date": "2022-06-01", "price": 150}]
-    }
-
-    result = get_data_for_date("22.06.2022")
-    expected = {
-        "AAPL": [{"date": "2022-06-01", "price": 150}]
-    }
-    assert result == expected
-
-# Тест для обработки исключений в fetch_market_data
-@patch("src.views.fetch_stock_data")
-@patch("src.views.load_user_settings")
-def test_fetch_market_data_exception(mock_load_user_settings, mock_fetch_stock_data, capsys):
-    mock_load_user_settings.return_value = {"user_stocks": ["AAPL"]}
-    mock_fetch_stock_data.side_effect = Exception("Error fetching stock data.")
-
-    result = fetch_market_data("22.06.2022")
-
-    assert result == {}
-
-    captured = capsys.readouterr()
-    assert "Error fetching stock data." in captured.out
-
-# Тест для обработки общего исключения в fetch_stock_data
-def test_fetch_stock_data_general_exception():
-    with patch("requests.get") as mock_get:
-        mock_get.side_effect = Exception("Something went wrong")
-
-        with pytest.raises(Exception) as excinfo:
-            fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
-
-        assert str(excinfo.value) == "Something went wrong"
-
-# Тест для проверки вывода исключения
-def test_printing_exception(capsys):
-    with patch("requests.get") as mock_get:
-        mock_get.side_effect = Exception("Something went wrong")
-
-        try:
-            fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
-        except Exception as e:
-            print(e)
-
-        captured = capsys.readouterr()
-        assert "Something went wrong" in captured.out
+    assert result_json["greeting"] == "Добрый день"
+    assert len(result_json["cards"]) == 3
+    assert len(result_json["top_transactions"]) == 3
+    assert len(result_json["currency_rates"]) == 2
+    assert len(result_json["stock_prices"]) == 2

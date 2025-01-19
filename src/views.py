@@ -1,109 +1,83 @@
 import json
+import logging
 from datetime import datetime
-import requests
-import os
-from dotenv import load_dotenv
+
 import pandas as pd
 
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
+from src.utils import fetch_currency_data, fetch_stock_data, filter_transactions_by_date, load_user_settings
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def load_user_settings(filename: str) -> dict:
-    """Функция загрузки пользовательских настроек из JSON-файла."""
-    current_dir = os.path.dirname(__file__)
-    full_path = os.path.join(current_dir, '..', filename)
-    with open(full_path, 'r') as f:
-        return json.load(f)
-
-
-def fetch_stock_data(symbols: str, start_date: str, end_date: str) -> dict:
-    """Функция получения исторических данных по акциям за указанный период."""
-    url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{symbols}?from={start_date}&to={end_date}&apikey={API_KEY}"
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        return response.json()
-    elif response.status_code == 401:
-        raise Exception("Unauthorized access. Check your API key.")
+def get_greeting(current_time):
+    """
+    Возвращает приветствие в зависимости от текущего времени суток.
+    """
+    hour = current_time.hour
+    if 6 <= hour < 12:
+        return "Доброе утро"
+    elif 12 <= hour < 18:
+        return "Добрый день"
+    elif 18 <= hour < 23:
+        return "Добрый вечер"
     else:
-        raise Exception(f"Error fetching data for {symbols}: {response.status_code}")
+        return "Доброй ночи"
 
 
-def fetch_currency_data(currencies: list) -> dict:
-    """Функция получения текущих курсов валют."""
-    url = f"https://financialmodelingprep.com/api/v3/quote/{','.join(currencies)}?apikey={API_KEY}"
-    response = requests.get(url)
+def get_card_statistics(data):
+    """
+    Формирует статистику по каждой карте: траты, кешбэк, последние 4 цифры карты.
+    """
+    card_stats = (
+        data.groupby("Номер карты")
+        .agg(
+            total_spent=("Сумма операции", "sum"),
+            cashback=("Сумма операции", lambda x: round(max(x.sum(), 0) * 0.01, 2)),
+        )
+        .reset_index()
+    )
+    card_stats["Номер карты"] = card_stats["Номер карты"].str[-4:]
+    return card_stats.to_dict(orient="records")
 
-    if response.status_code == 200:
-        return response.json()
-    elif response.status_code == 401:
-        raise Exception("Unauthorized access. Check your API key.")
-    else:
-        raise Exception(f"Error fetching currency data: {response.status_code}")
+
+def get_top_transactions(data, top_n=5):
+    """
+    Возвращает топ-N транзакций по сумме.
+    """
+    data["Дата операции"] = pd.to_datetime(data["Дата операции"], errors="coerce")
+    top_transactions = (
+        data[["Дата операции", "Сумма операции", "Категория", "Описание"]]
+        .sort_values(by="Сумма операции", ascending=False)
+        .head(top_n)
+    )
+    top_transactions["Дата операции"] = top_transactions["Дата операции"].dt.strftime("%Y-%m-%d")
+    return top_transactions.to_dict(orient="records")
 
 
-def fetch_market_data(input_date: str) -> dict:
+def main(date_str, excel_path="../data/operations.xlsx", user_settings_path="../user_settings.json", api_key=None):
+    """
+    Генерирует JSON-ответ с приветствием, статистикой по картам,
+    топовыми транзакциями, курсами валют и ценами акций.
+    """
     try:
-        user_settings = load_user_settings('user_settings.json')
-        user_stocks = ','.join(user_settings.get('user_stocks', []))
-        user_currencies = user_settings.get('user_currencies', [])
+        data = pd.read_excel(excel_path)
+        user_settings = load_user_settings(user_settings_path)
 
-        date_obj = datetime.strptime(input_date, "%d.%m.%Y")
-        start_date = date_obj.replace(day=1).strftime("%Y-%m-%d")
-        end_date = date_obj.strftime("%Y-%m-%d")
+        filtered_data = filter_transactions_by_date(data, date_str)
+        currency_data = fetch_currency_data(api_key, user_settings["user_currencies"])
+        stock_data = fetch_stock_data(api_key, user_settings["user_stocks"])
 
-        market_data = {}
+        response = {
+            "greeting": get_greeting(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")),
+            "cards": get_card_statistics(filtered_data),
+            "top_transactions": get_top_transactions(filtered_data),
+            "currency_rates": [{"currency": currency, "rate": rate} for currency, rate in currency_data.items()],
+            "stock_prices": [{"stock": stock["symbol"], "price": stock["price"]} for stock in stock_data],
+        }
 
-        stock_data = fetch_stock_data(user_stocks, start_date, end_date)
-        for historical_stock in stock_data.get('historicalStockList', []):
-            symbol = historical_stock['symbol']
-            historical_prices = historical_stock['historical']
-            market_data[symbol] = [entry for entry in historical_prices if start_date <= entry['date'] <= end_date]
+        logging.info("JSON-ответ успешно сгенерирован.")
+        return json.dumps(response, ensure_ascii=False, indent=4)
 
-        currency_data = fetch_currency_data(user_currencies)
-        market_data['currency_rates'] = {currency['symbol']: currency['price'] for currency in currency_data}
-
-        return market_data
     except Exception as e:
-        print(str(e))
-        return {}
-
-
-def get_data_for_date(input_date: str) -> dict:
-    """Функция получения рыночных данных за конкретный месяц на основе выбранной даты."""
-    return fetch_market_data(input_date)
-
-# if __name__ == "__main__":
-#     # Пример вызова функции загрузки пользовательских настроек
-#     try:
-#         settings = load_user_settings("user_settings.json")
-#         print("User settings loaded:", settings)
-#     except Exception as e:
-#         print("Error loading user settings:", str(e))
-#
-#     # Пример вызова функции получения рыночных данных
-#     input_date = "22.06.2022"
-#     market_data = fetch_market_data(input_date)
-#     print(f"Market data for {input_date}:", market_data)
-#
-#     # Пример вызова функции получения данных об акциях
-#     try:
-#         stock_data = fetch_stock_data("AAPL", "2022-06-01", "2022-06-30")
-#         print("Stock data for AAPL:", stock_data)
-#     except Exception as e:
-#         print("Error fetching stock data:", str(e))
-#
-#     # Пример вызова функции получения данных о валюте
-#     try:
-#         currency_data = fetch_currency_data(["USD", "EUR"])
-#         print("Currency data:", currency_data)
-#     except Exception as e:
-#         print("Error fetching currency data:", str(e))
-#
-#     # Пример вызова функции получения данных за определенную дату
-#     try:
-#         data_for_date = get_data_for_date(input_date)
-#         print(f"Data for {input_date}:", data_for_date)
-#     except Exception as e:
-#         print("Error getting data for date:", str(e))
+        logging.error(f"Ошибка: {e}")
+        return json.dumps({"error": str(e)}, ensure_ascii=False, indent=4)
