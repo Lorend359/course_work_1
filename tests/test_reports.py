@@ -6,25 +6,30 @@ import pandas as pd
 from src.reports import default_report_decorator, param_report_decorator, spending_by_category
 
 
-def test_spending_by_category():
+def test_spending_by_category(tmp_path):
     """
     Проверяет фильтрацию транзакций по категории и за последние три месяца от указанной даты.
     """
     data = pd.DataFrame(
         {
             "Дата операции": [
-                "2022-12-01 10:00:00",
-                "2022-10-15 12:00:00",
-                "2022-09-01 23:59:59",
-                "2022-08-31 11:59:59",
+                "01.12.2022 10:00:00",
+                "15.10.2022 12:00:00",
+                "01.09.2022 23:59:59",
+                "31.08.2022 11:59:59",
             ],
             "Категория": ["Супермаркеты", "Супермаркеты", "Оплата", "Супермаркеты"],
             "Сумма операции": [100, 500, -200, 999],
         }
     )
-    filtered = spending_by_category(data, category="Супермаркеты", date="2022-12-31")
-    assert len(filtered) == 2
-    assert all(filtered["Категория"] == "Супермаркеты")
+    current_dir = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        filtered = spending_by_category(data, category="Супермаркеты", date="2022-12-31")
+        assert len(filtered) == 2, f"Ожидалось 2 транзакции, получено {len(filtered)}"
+        assert all(filtered["Категория"] == "Супермаркеты"), "Не все транзакции относятся к категории 'Супермаркеты'"
+    finally:
+        os.chdir(current_dir)
 
 
 @default_report_decorator

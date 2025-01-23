@@ -58,7 +58,7 @@ def spending_by_category(
     end_date = pd.to_datetime(date) if date else datetime.datetime.now()
     start_date = end_date - pd.DateOffset(months=3)
 
-    transactions["Дата операции"] = pd.to_datetime(transactions["Дата операции"], errors="coerce")
+    transactions["Дата операции"] = pd.to_datetime(transactions["Дата операции"], dayfirst=True, errors="coerce")
 
     filtered = transactions[
         (transactions["Категория"] == category)
