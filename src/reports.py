@@ -1,44 +1,45 @@
 import datetime
 import logging
-from typing import Optional
+import os
+from typing import Callable, Optional, Any
 
 import pandas as pd
 
 
-def default_report_decorator(func):
+def default_report_decorator(func: Callable[..., pd.DataFrame]) -> Callable[..., pd.DataFrame]:
     """
-    Декоратор сохраняет результат функции в JSON-файл с именем по умолчанию.
+    Декоратор сохраняет результат функции в JSON-файл с именем по умолчанию в директорию 'reports'.
     """
-
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> pd.DataFrame:
         df_result = func(*args, **kwargs)
         result_json = df_result.to_json(orient="records", force_ascii=False)
         timestamp = int(datetime.datetime.now().timestamp())
         filename = f"report_{timestamp}.json"
+        filepath = os.path.join("reports", filename)
 
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(result_json)
 
-        logging.info(f"Report saved to {filename}")
+        logging.info(f"Report saved to {filepath}")
         return df_result
 
     return wrapper
 
 
-def param_report_decorator(filename):
+def param_report_decorator(filename: str) -> Callable[[Callable[..., pd.DataFrame]], Callable[..., pd.DataFrame]]:
     """
-    Декоратор сохраняет результат функции в указанный JSON-файл.
+    Декоратор сохраняет результат функции в указанный JSON-файл в директорию 'reports'.
     """
-
-    def real_decorator(func):
-        def wrapper(*args, **kwargs):
+    def real_decorator(func: Callable[..., pd.DataFrame]) -> Callable[..., pd.DataFrame]:
+        def wrapper(*args: Any, **kwargs: Any) -> pd.DataFrame:
             df_result = func(*args, **kwargs)
             result_json = df_result.to_json(orient="records", force_ascii=False)
+            filepath = os.path.join("reports", filename)
 
-            with open(filename, "w", encoding="utf-8") as f:
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.write(result_json)
 
-            logging.info(f"Report saved to {filename}")
+            logging.info(f"Report saved to {filepath}")
             return df_result
 
         return wrapper
@@ -55,12 +56,12 @@ def spending_by_category(
     """
     Возвращает траты по заданной категории за последние три месяца.
     """
-    end_date = pd.to_datetime(date) if date else datetime.datetime.now()
-    start_date = end_date - pd.DateOffset(months=3)
+    end_date: datetime.datetime = pd.to_datetime(date) if date else datetime.datetime.now()
+    start_date: datetime.datetime = end_date - pd.DateOffset(months=3)
 
     transactions["Дата операции"] = pd.to_datetime(transactions["Дата операции"], dayfirst=True, errors="coerce")
 
-    filtered = transactions[
+    filtered: pd.DataFrame = transactions[
         (transactions["Категория"] == category)
         & (transactions["Дата операции"] >= start_date)
         & (transactions["Дата операции"] <= end_date)

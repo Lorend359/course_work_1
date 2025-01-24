@@ -1,37 +1,42 @@
 import json
 import logging
-
+from typing import List, Dict, Any
 import pandas as pd
 import requests
 
 
-def load_user_settings(file_path):
+def load_user_settings(file_path: str) -> Dict[str, Any]:
     """
     Загружает настройки пользователя из файла.
     """
     with open(file_path, "r", encoding="utf-8") as file:
-        return json.load(file)
+        settings = json.load(file)
+    if not isinstance(settings, dict):
+        raise ValueError("Настройки должны быть представлены в формате словаря")
+    return settings
 
 
-def filter_transactions_by_date(data, input_date):
+def filter_transactions_by_date(data: pd.DataFrame, input_date: str) -> pd.DataFrame:
     """
     Фильтрует транзакции по указанному диапазону дат.
     """
     data["Кэшбэк"] = data["Кэшбэк"].fillna(0)
     data = data.dropna(subset=["Номер карты"])
-    data.loc[:, "Дата операции"] = pd.to_datetime(data["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce")
+    data.loc[:, "Дата операции"] = pd.to_datetime(
+        data["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce"
+    )
     data = data.dropna(subset=["Дата операции"])
 
-    input_date = pd.to_datetime(input_date)
-    start_date = input_date.replace(day=1)
-    end_date = input_date
+    input_date_dt = pd.to_datetime(input_date)
+    start_date = input_date_dt.replace(day=1)
+    end_date = input_date_dt
 
     filtered_data = data[(data["Дата операции"] >= start_date) & (data["Дата операции"] <= end_date)]
     logging.info(f"Filtered transactions count: {filtered_data.shape[0]}")
     return filtered_data
 
 
-def fetch_currency_data(api_key, currencies):
+def fetch_currency_data(api_key: str, currencies: List[str]) -> Dict[str, float]:
     """
     Получает курсы валют через API.
     """
@@ -40,11 +45,14 @@ def fetch_currency_data(api_key, currencies):
 
     if response.status_code == 200:
         data = response.json().get("forexList", [])
+        if not isinstance(data, list):
+            raise ValueError("Ответ от API должен быть списком")
         currency_data = {
             currency: float(entry["bid"])
             for entry in data
+            if isinstance(entry, dict)
             for currency in currencies
-            if entry["ticker"].endswith(f"/{currency}")
+            if entry.get("ticker", "").endswith(f"/{currency}")
         }
         logging.info(f"Filtered currency data: {currency_data}")
         return currency_data
@@ -52,7 +60,7 @@ def fetch_currency_data(api_key, currencies):
         raise Exception("Ошибка при получении данных о курсах валют")
 
 
-def fetch_stock_data(api_key, stocks):
+def fetch_stock_data(api_key: str, stocks: List[str]) -> List[Dict[str, Any]]:
     """
     Получает текущие цены на акции через API.
     """
@@ -61,6 +69,9 @@ def fetch_stock_data(api_key, stocks):
     response = requests.get(base_url)
 
     if response.status_code == 200:
-        return response.json()
+        data = response.json()
+        if not isinstance(data, list):
+            raise ValueError("Ответ от API должен быть списком")
+        return data
     else:
         raise Exception("Ошибка при получении данных о ценах на акции")

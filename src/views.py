@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -9,7 +10,7 @@ from src.utils import fetch_currency_data, fetch_stock_data, filter_transactions
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def get_greeting(current_time):
+def get_greeting(current_time: datetime) -> str:
     """
     Возвращает приветствие в зависимости от текущего времени суток.
     """
@@ -24,7 +25,7 @@ def get_greeting(current_time):
         return "Доброй ночи"
 
 
-def get_card_statistics(data):
+def get_card_statistics(data: pd.DataFrame) -> List[Dict[str, Any]]:
     """
     Формирует статистику по каждой карте: траты, кешбэк, последние 4 цифры карты.
     """
@@ -36,11 +37,11 @@ def get_card_statistics(data):
         )
         .reset_index()
     )
-    card_stats["Номер карты"] = card_stats["Номер карты"].str[-4:]
-    return card_stats.to_dict(orient="records")
+    card_stats["Номер карты"] = card_stats["Номер карты"].astype(str).str[-4:]
+    return [{str(k): v for k, v in row.items()} for row in card_stats.to_dict(orient="records")]
 
 
-def get_top_transactions(data, top_n=5):
+def get_top_transactions(data: pd.DataFrame, top_n: int = 5) -> List[Dict[str, Any]]:
     """
     Возвращает топ-N транзакций по сумме.
     """
@@ -51,15 +52,23 @@ def get_top_transactions(data, top_n=5):
         .head(top_n)
     )
     top_transactions["Дата операции"] = top_transactions["Дата операции"].dt.strftime("%Y-%m-%d")
-    return top_transactions.to_dict(orient="records")
+    return [{str(k): v for k, v in row.items()} for row in top_transactions.to_dict(orient="records")]
 
 
-def main(date_str, excel_path="../data/operations.xlsx", user_settings_path="../user_settings.json", api_key=None):
+def main(
+    date_str: str,
+    excel_path: str = "../data/operations.xlsx",
+    user_settings_path: str = "../user_settings.json",
+    api_key: Optional[str] = None,
+) -> str:
     """
     Генерирует JSON-ответ с приветствием, статистикой по картам,
     топовыми транзакциями, курсами валют и ценами акций.
     """
     try:
+        if api_key is None:
+            raise ValueError("API ключ не может быть None.")
+
         data = pd.read_excel(excel_path)
         user_settings = load_user_settings(user_settings_path)
 

@@ -25,9 +25,15 @@ def test_spending_by_category(tmp_path):
     current_dir = os.getcwd()
     os.chdir(tmp_path)
     try:
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+
         filtered = spending_by_category(data, category="Супермаркеты", date="2022-12-31")
         assert len(filtered) == 2, f"Ожидалось 2 транзакции, получено {len(filtered)}"
         assert all(filtered["Категория"] == "Супермаркеты"), "Не все транзакции относятся к категории 'Супермаркеты'"
+
+        report_files = list(reports_dir.glob("report_*.json"))
+        assert len(report_files) == 1, f"Ожидалось 1 отчёт, найдено {len(report_files)}"
     finally:
         os.chdir(current_dir)
 
@@ -48,18 +54,28 @@ def test_default_decorator(tmp_path):
     current_dir = os.getcwd()
     os.chdir(tmp_path)
     try:
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+
         result_df = dummy_report_default(df)
-        assert result_df.equals(df)
-        files = list(tmp_path.iterdir())
-        assert len(files) == 1
-        report_file = files[0]
-        assert report_file.name.startswith("report_")
-        assert report_file.suffix == ".json"
+        assert result_df.equals(df), "DataFrame не совпадает с ожидаемым результатом"
+
+        report_files = list(reports_dir.glob("report_*.json"))
+        assert len(report_files) == 1, f"Ожидалось 1 отчёт, найдено {len(report_files)}"
+
+        report_file = report_files[0]
+        assert report_file.name.startswith(
+            "report_"
+        ), f"Имя файла отчёта должно начинаться с 'report_', а получено {report_file.name}"
+        assert (
+            report_file.suffix == ".json"
+        ), f"Файл отчёта должен иметь расширение '.json', а получено {report_file.suffix}"
+
         content = report_file.read_text(encoding="utf-8")
         data = json.loads(content)
-        assert len(data) == 2
-        assert data[0]["A"] == 1
-        assert data[1]["B"] == 4
+        assert len(data) == 2, f"Ожидалось 2 записи в отчёте, найдено {len(data)}"
+        assert data[0]["A"] == 1, "Значение 'A' первой записи некорректно"
+        assert data[1]["B"] == 4, "Значение 'B' второй записи некорректно"
     finally:
         os.chdir(current_dir)
 
@@ -80,14 +96,19 @@ def test_param_decorator(tmp_path):
     current_dir = os.getcwd()
     os.chdir(tmp_path)
     try:
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+
         result_df = dummy_report_param(df)
-        assert result_df.equals(df)
-        report_file = tmp_path / "my_custom_report.json"
-        assert report_file.exists()
+        assert result_df.equals(df), "DataFrame не совпадает с ожидаемым результатом"
+
+        report_file = reports_dir / "my_custom_report.json"
+        assert report_file.exists(), f"Файл отчёта {report_file} не существует"
+
         content = report_file.read_text(encoding="utf-8")
         data = json.loads(content)
-        assert len(data) == 2
-        assert data[0]["X"] == 10
-        assert data[1]["Y"] == 40
+        assert len(data) == 2, f"Ожидалось 2 записи в отчёте, найдено {len(data)}"
+        assert data[0]["X"] == 10, "Значение 'X' первой записи некорректно"
+        assert data[1]["Y"] == 40, "Значение 'Y' второй записи некорректно"
     finally:
         os.chdir(current_dir)
