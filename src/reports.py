@@ -1,7 +1,7 @@
 import datetime
 import logging
 import os
-from typing import Callable, Optional, Any
+from typing import Any, Callable, Optional
 
 import pandas as pd
 
@@ -10,6 +10,7 @@ def default_report_decorator(func: Callable[..., pd.DataFrame]) -> Callable[...,
     """
     Декоратор сохраняет результат функции в JSON-файл с именем по умолчанию в директорию 'reports'.
     """
+
     def wrapper(*args: Any, **kwargs: Any) -> pd.DataFrame:
         df_result = func(*args, **kwargs)
         result_json = df_result.to_json(orient="records", force_ascii=False)
@@ -30,6 +31,7 @@ def param_report_decorator(filename: str) -> Callable[[Callable[..., pd.DataFram
     """
     Декоратор сохраняет результат функции в указанный JSON-файл в директорию 'reports'.
     """
+
     def real_decorator(func: Callable[..., pd.DataFrame]) -> Callable[..., pd.DataFrame]:
         def wrapper(*args: Any, **kwargs: Any) -> pd.DataFrame:
             df_result = func(*args, **kwargs)

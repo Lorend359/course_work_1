@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 import pandas as pd
 import requests
 
@@ -22,9 +23,7 @@ def filter_transactions_by_date(data: pd.DataFrame, input_date: str) -> pd.DataF
     """
     data["Кэшбэк"] = data["Кэшбэк"].fillna(0)
     data = data.dropna(subset=["Номер карты"])
-    data.loc[:, "Дата операции"] = pd.to_datetime(
-        data["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce"
-    )
+    data.loc[:, "Дата операции"] = pd.to_datetime(data["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce")
     data = data.dropna(subset=["Дата операции"])
 
     input_date_dt = pd.to_datetime(input_date)

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -17,9 +17,8 @@ def search_transactions(query: str, excel_path: str = "data/operations.xlsx") ->
         df["Категория"] = df["Категория"].fillna("")
 
         # Фильтрация строк по запросу
-        mask: pd.Series = (
-            df["Описание"].str.contains(query, case=False, na=False)
-            | df["Категория"].str.contains(query, case=False, na=False)
+        mask: pd.Series = df["Описание"].str.contains(query, case=False, na=False) | df["Категория"].str.contains(
+            query, case=False, na=False
         )
         filtered: pd.DataFrame = df[mask]
 
